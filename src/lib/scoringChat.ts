@@ -78,7 +78,10 @@ function extractAiText(payload: unknown): string {
   }
 
   const data = payload as {
-    choices?: { message?: { content?: string }; text?: string }[];
+    choices?: {
+      message?: { content?: string; reasoning_content?: string };
+      text?: string;
+    }[];
     output_text?: string;
     response?: string;
     answer?: string;
@@ -87,6 +90,7 @@ function extractAiText(payload: unknown): string {
 
   const text =
     data.choices?.[0]?.message?.content ||
+    data.choices?.[0]?.message?.reasoning_content ||
     data.choices?.[0]?.text ||
     data.output_text ||
     data.response ||
@@ -99,6 +103,39 @@ function extractAiText(payload: unknown): string {
     .replace(/__([^_]+)__/g, '$1')
     .replace(/<\/?strong>/gi, '')
     .trim();
+}
+
+async function performChatFetch(body: object): Promise<Response> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (chatApiKey) {
+    headers.Authorization = `Bearer ${chatApiKey}`;
+  }
+
+  // Attempt backend proxy first to avoid browser CORS restrictions
+  try {
+    const proxyRes = await fetch('/api/ai/chat/completions', {
+      method: 'POST',
+      headers: {
+        ...headers,
+        'X-Target-Endpoint': chatEndpoint,
+      },
+      body: JSON.stringify(body),
+    });
+    if (proxyRes.ok || (proxyRes.status !== 404 && proxyRes.status !== 502)) {
+      return proxyRes;
+    }
+  } catch {
+    // If backend proxy is not reachable, proceed to direct fetch
+  }
+
+  // Fallback to direct client-side fetch
+  return fetch(chatEndpoint, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
 }
 
 export function isChatConfigured(): boolean {
@@ -133,17 +170,10 @@ async function fallbackStandardChat(
     { role: 'user', content: question },
   ];
 
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (chatApiKey) headers.Authorization = `Bearer ${chatApiKey}`;
-
-  const response = await fetch(chatEndpoint, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      model: chatModel || undefined,
-      messages,
-      temperature: 0.3,
-    }),
+  const response = await performChatFetch({
+    model: chatModel || undefined,
+    messages,
+    temperature: 0.3,
   });
 
   if (!response.ok) {
@@ -179,13 +209,6 @@ export async function askScoringAi({
     { role: 'user', content: question },
   ];
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-  if (chatApiKey) {
-    headers.Authorization = `Bearer ${chatApiKey}`;
-  }
-
   let loopCount = 0;
   const maxLoops = 3;
 
@@ -194,16 +217,12 @@ export async function askScoringAi({
 
     let response: Response;
     try {
-      response = await fetch(chatEndpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          model: chatModel || undefined,
-          messages,
-          tools: SCORING_CHAT_TOOLS,
-          tool_choice: 'auto',
-          temperature: 0.2,
-        }),
+      response = await performChatFetch({
+        model: chatModel || undefined,
+        messages,
+        tools: SCORING_CHAT_TOOLS,
+        tool_choice: 'auto',
+        temperature: 0.2,
       });
     } catch {
       // Network failure on tools endpoint -> attempt fallback
@@ -218,6 +237,7 @@ export async function askScoringAi({
       const errorText = await response.text().catch(() => '');
       throw new Error(errorText || `AI mengembalikan status ${response.status}.`);
     }
+
 
     const payload = await response.json();
     const choice = payload?.choices?.[0];
