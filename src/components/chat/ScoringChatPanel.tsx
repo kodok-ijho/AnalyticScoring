@@ -7,17 +7,17 @@ interface Props {
 }
 
 const SUGGESTED_QUESTIONS = [
-  'Tim mana yang paling perlu diperhatikan bulan ini?',
-  'Apa penyebab utama performa tim bawah rendah?',
-  'Siapa personil watchlist yang perlu coaching duluan?',
-  'Bandingkan tim terbaik dan tim yang paling lemah.',
+  'Tim mana yang performanya paling anjlok dan apa akar masalahnya?',
+  'Siapa personil yang memiliki anomali mutasi atau lonjakan skor ekstrim?',
+  'Jelaskan karakteristik 4 kluster segmen personil yang terbentuk.',
+  'Siapa personil di watchlist yang paling butuh intervensi segera?',
 ];
 
 const CHAT_SESSION_KEY = 'iscore-scoring-chat-messages';
 const INITIAL_MESSAGE: ChatMessage = {
   role: 'assistant',
   content:
-    'Halo, saya bisa bantu membaca data scoring ini. Tanyakan misalnya tim mana yang perlu perhatian, personil mana yang perlu coaching, atau metrik apa yang paling lemah.',
+    'Halo, saya siap membantu menganalisis data scoring secara diagnostik. Tanyakan apa saja mengenai performa tim, anomali mutasi, kluster personil, atau metrik yang perlu perbaikan.',
 };
 
 function loadSessionMessages(): ChatMessage[] {
@@ -46,6 +46,7 @@ export function ScoringChatPanel({ onClose }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>(loadSessionMessages);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [activeToolName, setActiveToolName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -55,6 +56,8 @@ export function ScoringChatPanel({ onClose }: Props) {
   const availablePeriods = useDashboardStore((s) => s.availablePeriods);
   const filteredProfiles = useDashboardStore((s) => s.filteredProfiles);
   const filteredIndividualProfiles = useDashboardStore((s) => s.filteredIndividualProfiles);
+  const clusters = useDashboardStore((s) => s.clusters);
+  const anomalyAnalysis = useDashboardStore((s) => s.anomalyAnalysis);
   const csmCorrelation = useDashboardStore((s) => s.csmCorrelation);
   const locationBreakdownLoc = useDashboardStore((s) => s.locationBreakdownLoc);
   const locationBreakdownType = useDashboardStore((s) => s.locationBreakdownType);
@@ -67,17 +70,22 @@ export function ScoringChatPanel({ onClose }: Props) {
       availablePeriods,
       teams: filteredProfiles,
       individuals: filteredIndividualProfiles,
+      clusters,
+      anomalies: anomalyAnalysis,
       csmCorrelation,
       locationBreakdownLoc,
       locationBreakdownType,
+      filteredRows,
     }),
     [
       sheetName,
-      filteredRows.length,
+      filteredRows,
       filters,
       availablePeriods,
       filteredProfiles,
       filteredIndividualProfiles,
+      clusters,
+      anomalyAnalysis,
       csmCorrelation,
       locationBreakdownLoc,
       locationBreakdownType,
@@ -100,6 +108,7 @@ export function ScoringChatPanel({ onClose }: Props) {
 
     setError(null);
     setInput('');
+    setActiveToolName(null);
 
     const historyForApi = messages.filter((message) => message.content.trim().length > 0);
     const nextMessages: ChatMessage[] = [...messages, { role: 'user', content: trimmed }];
@@ -111,6 +120,9 @@ export function ScoringChatPanel({ onClose }: Props) {
         question: trimmed,
         history: historyForApi,
         context,
+        onExecutingTool: (toolName) => {
+          setActiveToolName(toolName);
+        },
       });
 
       setMessages((current) => [...current, { role: 'assistant', content: answer }]);
@@ -121,11 +133,12 @@ export function ScoringChatPanel({ onClose }: Props) {
         ...current,
         {
           role: 'assistant',
-          content: 'Maaf, chat AI belum bisa menjawab sekarang. Cek konfigurasi endpoint/API key atau coba lagi nanti.',
+          content: 'Maaf, sistem analisis AI belum dapat menjawab saat ini. Pastikan konfigurasi API key valid di file .env.',
         },
       ]);
     } finally {
       setIsLoading(false);
+      setActiveToolName(null);
       inputRef.current?.focus();
     }
   };
@@ -135,15 +148,28 @@ export function ScoringChatPanel({ onClose }: Props) {
     void submitQuestion(input);
   };
 
+  const toolLabels: Record<string, string> = {
+    query_top_bottom_performers: 'Mengevaluasi ranking & tren performa...',
+    query_individual_profile: 'Mencari rekam jejak personil...',
+    query_team_profile: 'Mengambil rincian tim MPG...',
+    query_anomalies: 'Mendeteksi anomali statistik...',
+    query_clusters: 'Menganalisis kluster segmen...',
+    query_mutation_impacts: 'Mengukur dampak mutasi kerja...',
+    query_branch_comparison: 'Membandingkan data cabang...',
+  };
+
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" onClick={onClose} />
       <aside className="fixed right-0 top-0 z-50 flex h-full w-full max-w-xl flex-col border-l border-slate-700/70 bg-slate-950 shadow-2xl shadow-black/70 animate-slideInRight">
         <header className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
           <div>
-            <h2 className="text-base font-bold text-white">Chat dengan Scoring</h2>
-            <p className="text-xs text-slate-500">
-              Tanya pakai bahasa biasa berdasarkan data yang sedang terfilter
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse" />
+              <h2 className="text-base font-bold text-white">AI Scoring Copilot</h2>
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Analisis diagnostik manajerial interaktif berbasis data live
             </p>
           </div>
           <button
@@ -160,21 +186,21 @@ export function ScoringChatPanel({ onClose }: Props) {
         {!configured && (
           <div className="border-b border-amber-500/20 bg-amber-500/10 px-5 py-3 text-xs leading-relaxed text-amber-200">
             Konfigurasi AI belum lengkap. Isi <span className="font-mono">VITE_AI_CHAT_ENDPOINT</span> dan
-            <span className="font-mono"> VITE_AI_CHAT_API_KEY</span>, lalu jalankan ulang aplikasi.
+            <span className="font-mono"> VITE_AI_CHAT_API_KEY</span> di file <span className="font-mono">.env</span>, lalu jalankan ulang aplikasi.
           </div>
         )}
 
         <div className="border-b border-slate-800 px-5 py-3">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-            Contoh pertanyaan
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            Pertanyaan Analitik Cepat
           </p>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             {SUGGESTED_QUESTIONS.map((question) => (
               <button
                 key={question}
                 onClick={() => void submitQuestion(question)}
                 disabled={isLoading}
-                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-left text-xs text-slate-300 transition-colors hover:border-violet-500/50 hover:bg-violet-500/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-left text-xs text-slate-300 transition-colors hover:border-cyan-500/50 hover:bg-cyan-500/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {question}
               </button>
@@ -189,10 +215,10 @@ export function ScoringChatPanel({ onClose }: Props) {
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-[86%] rounded-xl px-3 py-2 text-sm leading-relaxed ${
+                className={`max-w-[88%] rounded-xl px-4 py-2.5 text-sm leading-relaxed ${
                   message.role === 'user'
-                    ? 'bg-cyan-600 text-white'
-                    : 'border border-slate-800 bg-slate-900 text-slate-200'
+                    ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md'
+                    : 'border border-slate-800 bg-slate-900/90 text-slate-200 shadow-sm'
                 }`}
               >
                 <p className="whitespace-pre-wrap">{message.content}</p>
@@ -202,8 +228,16 @@ export function ScoringChatPanel({ onClose }: Props) {
 
           {isLoading && (
             <div className="flex justify-start">
-              <div className="rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-400">
-                Sedang membaca data scoring...
+              <div className="rounded-xl border border-cyan-500/30 bg-slate-900 px-4 py-2.5 text-xs text-cyan-300 flex items-center gap-2.5 shadow-md">
+                <svg className="w-4 h-4 animate-spin text-cyan-400" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+                <span>
+                  {activeToolName
+                    ? (toolLabels[activeToolName] || `Menjalankan kueri: ${activeToolName}...`)
+                    : 'Menganalisis data scoring...'}
+                </span>
               </div>
             </div>
           )}
@@ -219,27 +253,24 @@ export function ScoringChatPanel({ onClose }: Props) {
           <div className="flex gap-2">
             <textarea
               ref={inputRef}
+              rows={2}
               value={input}
-              onChange={(event) => setInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
-                  event.preventDefault();
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
                   void submitQuestion(input);
                 }
               }}
-              rows={2}
-              placeholder="Tanya sesuatu dari data scoring..."
-              className="min-h-[44px] flex-1 resize-none rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none transition-colors placeholder:text-slate-600 focus:border-cyan-500/70"
+              placeholder="Tanyakan analisis tajam terkait tim, individu, mutasi, atau metrik..."
+              className="flex-1 resize-none rounded-xl border border-slate-700 bg-slate-900 px-3.5 py-2 text-sm text-slate-200 placeholder-slate-500 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500"
             />
             <button
               type="submit"
-              disabled={!input.trim() || isLoading}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-cyan-600 text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
-              aria-label="Kirim pertanyaan"
+              disabled={isLoading || !input.trim()}
+              className="rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50 flex items-center justify-center self-end h-10"
             >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M13 5l7 7-7 7" />
-              </svg>
+              Kirim
             </button>
           </div>
         </form>

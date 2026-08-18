@@ -14,6 +14,8 @@ import {
   computeVolatility,
   computeProsCons,
 } from './aggregateTeams';
+import { clusterPersonnel } from './clustering';
+
 
 /**
  * Filter and sort rows for a specific employee (NPK) chronologically.
@@ -342,5 +344,8 @@ export function buildIndividualProfiles(
     });
   }
 
-  return profiles;
+  // 9. Assign K-Means clusters and archetypes
+  const clustered = clusterPersonnel(profiles);
+  return clustered.profiles;
 }
+

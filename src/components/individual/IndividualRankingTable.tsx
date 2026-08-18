@@ -29,16 +29,21 @@ function TrendIcon({ direction }: { direction: 'up' | 'down' | 'flat' }) {
 export function IndividualRankingTable() {
   const filteredIndividualProfiles = useDashboardStore((s) => s.filteredIndividualProfiles);
   const contextAnalysis = useDashboardStore((s) => s.contextAnalysis);
+  const selectedClusterId = useDashboardStore((s) => s.selectedClusterId);
   const setSelectedIndividual = useDashboardStore((s) => s.setSelectedIndividual);
 
   const [activeRole, setActiveRole] = useState<Exclude<Jabatan, 'UNKNOWN'>>('CE');
   const [sortField, setSortField] = useState<IndividualSortField>('rankInPeerGroup');
   const [sortDir, setSortDir] = useState<SortDirection>('asc');
 
-  // Filter profiles by current active role
+  // Filter profiles by current active role and selected cluster
   const roleFilteredProfiles = useMemo(() => {
-    return filteredIndividualProfiles.filter((p) => p.jabatanUtama === activeRole);
-  }, [filteredIndividualProfiles, activeRole]);
+    let list = filteredIndividualProfiles.filter((p) => p.jabatanUtama === activeRole);
+    if (selectedClusterId) {
+      list = list.filter((p) => p.clusterId === selectedClusterId);
+    }
+    return list;
+  }, [filteredIndividualProfiles, activeRole, selectedClusterId]);
 
   // Sort profiles
   const sortedProfiles = useMemo(() => {
@@ -96,7 +101,14 @@ export function IndividualRankingTable() {
     <div className="glass rounded-xl overflow-hidden animate-fadeIn">
       {/* Title & Role Toggles */}
       <div className="px-6 py-4 border-b border-slate-700/50 flex flex-wrap items-center justify-between gap-4">
-        <h2 className="text-lg font-bold text-white">Ranking Personil</h2>
+        <div>
+          <h2 className="text-lg font-bold text-white">Ranking Personil</h2>
+          {selectedClusterId && (
+            <p className="text-xs text-cyan-400 mt-0.5">
+              Menampilkan filter segmen kluster aktif
+            </p>
+          )}
+        </div>
         
         {/* Role filters */}
         <div className="flex bg-slate-800/80 p-1 rounded-lg border border-slate-700/50">
@@ -127,6 +139,9 @@ export function IndividualRankingTable() {
               <SortHeader field="rankInPeerGroup" label="#" />
               <SortHeader field="npk" label="NPK" />
               <SortHeader field="nama" label="Nama" />
+              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                Segmen
+              </th>
               <SortHeader field="avgTotalOverall" label="Avg TOTAL" />
               <SortHeader field="deltaPct" label="Tren" />
               <SortHeader field="volatility" label="Volatilitas" />
@@ -168,7 +183,21 @@ export function IndividualRankingTable() {
                         Mutasi
                       </span>
                     )}
+                    {p.anomalyCount && p.anomalyCount > 0 ? (
+                      <span
+                        className="px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 text-[10px] font-bold border border-amber-500/20 flex items-center gap-1"
+                        title={`${p.anomalyCount} anomali statistik terdeteksi`}
+                      >
+                        <span>⚠️</span>
+                        <span>{p.anomalyCount}</span>
+                      </span>
+                    ) : null}
                   </div>
+                </td>
+                <td className="px-4 py-3">
+                  <span className="text-xs px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700 text-slate-300 font-medium">
+                    {p.clusterLabel ?? '-'}
+                  </span>
                 </td>
                 <td className="px-4 py-3 text-slate-300 font-mono text-sm font-semibold">
                   {p.avgTotalOverall.toFixed(2)}
@@ -221,8 +250,8 @@ export function IndividualRankingTable() {
             ))}
             {sortedProfiles.length === 0 && (
               <tr>
-                <td colSpan={11} className="text-center py-12 text-slate-500 text-sm">
-                  Tidak ada data untuk grup jabatan ini.
+                <td colSpan={12} className="text-center py-12 text-slate-500 text-sm">
+                  Tidak ada data untuk grup jabatan/segmen ini.
                 </td>
               </tr>
             )}
@@ -232,3 +261,4 @@ export function IndividualRankingTable() {
     </div>
   );
 }
+

@@ -27,6 +27,7 @@ export function IndividualDetailDrawer() {
   const setSelectedIndividual = useDashboardStore((s) => s.setSelectedIndividual);
   const filteredIndividualProfiles = useDashboardStore((s) => s.filteredIndividualProfiles);
   const peerBaselines = useDashboardStore((s) => s.peerBaselines);
+  const anomalyAnalysis = useDashboardStore((s) => s.anomalyAnalysis);
 
   const [hoveredTrend, setHoveredTrend] = useState(false);
   const [hoveredVol, setHoveredVol] = useState(false);
@@ -36,6 +37,12 @@ export function IndividualDetailDrawer() {
     () => filteredIndividualProfiles.find((p) => p.npk === selectedIndividual),
     [filteredIndividualProfiles, selectedIndividual]
   );
+
+  const personAnomalies = useMemo(() => {
+    if (!profile || !anomalyAnalysis) return [];
+    return anomalyAnalysis.anomalies.filter((a) => a.npk === profile.npk);
+  }, [profile, anomalyAnalysis]);
+
 
   const chartData = useMemo(() => {
     if (!profile) return [];
@@ -126,8 +133,15 @@ export function IndividualDetailDrawer() {
         {/* Header */}
         <div className="sticky top-0 bg-slate-900/95 backdrop-blur-sm z-10 px-6 py-4 border-b border-slate-700/50 flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-white">{profile.nama}</h2>
-            <p className="text-sm text-slate-500 font-mono">
+            <div className="flex items-center gap-2.5">
+              <h2 className="text-2xl font-bold text-white">{profile.nama}</h2>
+              {profile.clusterLabel && (
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 font-medium">
+                  {profile.clusterLabel}
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-slate-500 font-mono mt-0.5">
               NPK {profile.npk} • {profile.jabatanUtama}
               {latestEntry && ` • WCTR ${latestEntry.wctr} • Tim ${latestEntry.mpg}`}
             </p>
@@ -143,7 +157,38 @@ export function IndividualDetailDrawer() {
         </div>
 
         <div className="p-6 space-y-6">
+          {/* Detected Anomalies Alert (If any) */}
+          {personAnomalies.length > 0 && (
+            <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-2.5">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">⚠️</span>
+                <h4 className="text-xs font-bold text-amber-300 uppercase tracking-wider">
+                  Deteksi Anomali Statistik ({personAnomalies.length})
+                </h4>
+              </div>
+              <div className="space-y-2">
+                {personAnomalies.map((anom) => (
+                  <div key={anom.id} className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 text-xs space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-white">{anom.title}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-bold ${
+                        anom.severity === 'critical' ? 'bg-rose-500/10 text-rose-400' : 'bg-amber-500/10 text-amber-400'
+                      }`}>
+                        {anom.severity}
+                      </span>
+                    </div>
+                    <p className="text-slate-400 text-[11px] leading-relaxed">{anom.description}</p>
+                    <p className="text-[10px] text-slate-500 font-mono pt-1 border-t border-slate-800">
+                      {anom.evidence.details}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Quick Stats Grid */}
+
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
             <div className="glass-light rounded-xl p-3 text-center flex flex-col justify-between">
               <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Rank Peran</p>

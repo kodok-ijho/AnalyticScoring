@@ -8,11 +8,12 @@ import { SizeVsPerformanceChart } from '../composition/SizeVsPerformanceChart';
 import { ErrorBoundary } from '../common/ErrorBoundary';
 import { ScoringChatPanel } from '../chat/ScoringChatPanel';
 
-// Phase 2 imports
 import { IndividualSearchBox } from '../individual/IndividualSearchBox';
 import { IndividualRankingTable } from '../individual/IndividualRankingTable';
 import { ContextEffectPanel } from '../individual/ContextEffectPanel';
+import { ClusterSegmentPanel } from '../individual/ClusterSegmentPanel';
 import { WatchlistPanel } from '../individual/WatchlistPanel';
+
 import { TopPerformerPanel } from '../individual/TopPerformerPanel';
 import { JabatanComparisonView } from '../jabatan/JabatanComparisonView';
 import { CEvsSPSPanel } from '../jabatan/CEvsSPSPanel';
@@ -186,10 +187,16 @@ export function DashboardShell() {
               </div>
             </div>
 
+            {/* Cluster Segments */}
+            <ErrorBoundary fallbackTitle="Error pada Segmentasi Kluster">
+              <ClusterSegmentPanel />
+            </ErrorBoundary>
+
             {/* Main Individual Ranking Table */}
             <ErrorBoundary fallbackTitle="Error pada Analisis Konteks Penempatan">
               <ContextEffectPanel />
             </ErrorBoundary>
+
 
             <ErrorBoundary fallbackTitle="Error pada Tabel Ranking Individu">
               <IndividualRankingTable />

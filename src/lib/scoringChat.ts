@@ -1,32 +1,19 @@
 import type {
-  CsmSubordinateCorrelation,
-  FilterState,
-  IndividualProfile,
-  LocationBreakdown,
-  TeamProfile,
-} from '../types';
+  ChatMessage,
+  ScoringChatFullContext,
+} from './scoringChatTools';
+import {
+  SCORING_CHAT_TOOLS,
+  executeScoringTool,
+} from './scoringChatTools';
 
-export interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
+export type { ChatMessage } from './scoringChatTools';
 
-interface ScoringChatContext {
-  sheetName: string;
-  rowCount: number;
-  filters: FilterState;
-  availablePeriods: string[];
-  teams: TeamProfile[];
-  individuals: IndividualProfile[];
-  csmCorrelation: CsmSubordinateCorrelation | null;
-  locationBreakdownLoc: LocationBreakdown | null;
-  locationBreakdownType: LocationBreakdown | null;
-}
-
-interface ChatRequest {
+export interface ChatRequest {
   question: string;
-  history: ChatMessage[];
-  context: ScoringChatContext;
+  history: { role: 'user' | 'assistant'; content: string }[];
+  context: ScoringChatFullContext;
+  onExecutingTool?: (toolName: string) => void;
 }
 
 const DEFAULT_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
@@ -35,121 +22,42 @@ const chatEndpoint = import.meta.env.VITE_AI_CHAT_ENDPOINT || DEFAULT_ENDPOINT;
 const chatApiKey = import.meta.env.VITE_AI_CHAT_API_KEY || '';
 const chatModel = import.meta.env.VITE_AI_CHAT_MODEL || '';
 
-function formatPercent(value: number | undefined): string {
-  return value === undefined ? '-' : `${value.toFixed(1)}%`;
-}
-
 function formatScore(value: number | undefined): string {
   return value === undefined ? '-' : value.toFixed(2);
 }
 
-function summarizeTeam(profile: TeamProfile): Record<string, string | number> {
-  const last = profile.periodStats[profile.periodStats.length - 1];
-  return {
-    mpg: profile.mpg,
-    rank: profile.rank,
-    avgTotal: formatScore(profile.avgTotalOverall),
-    avgCsm: formatScore(profile.avgTotalCsmOverall),
-    avgTeknisi: formatScore(profile.avgTotalAnggotaOverall),
-    trend: `${profile.trend.direction} ${profile.trend.deltaPct.toFixed(1)}%`,
-    stabilitas: profile.volatility.toFixed(3),
-    anggotaTerakhir: last?.memberCount ?? 0,
-    lokasiTerakhir: last ? `HO ${formatPercent(last.pctHO)}, SERPO ${formatPercent(last.pctSERPO)}` : '-',
-    kekuatan: profile.pros.slice(0, 3).map((p) => p.metric).join(', ') || '-',
-    perluDiperbaiki: profile.cons.slice(0, 3).map((c) => c.metric).join(', ') || '-',
-  };
-}
-
-function summarizeIndividual(profile: IndividualProfile): Record<string, string | number> {
-  const latest = profile.history[profile.history.length - 1];
-  return {
-    nama: profile.nama,
-    npk: profile.npk,
-    jabatan: profile.jabatanUtama,
-    timTerakhir: latest?.mpg ?? '-',
-    lokasiTerakhir: latest?.loc ?? '-',
-    rankJabatan: profile.rankInPeerGroup,
-    avgTotal: formatScore(profile.avgTotalOverall),
-    status: profile.status,
-    trend: `${profile.trend.direction} ${profile.trend.deltaPct.toFixed(1)}%`,
-    stabilitas: profile.volatility.toFixed(3),
-    vsTim: formatScore(profile.vsTeamAvg),
-    vsJabatan: formatScore(profile.vsPeerAvg),
-    mutasi: profile.hasMutasi ? 'ya' : 'tidak',
-    kekuatan: profile.pros.slice(0, 3).map((p) => p.metric).join(', ') || '-',
-    perluDiperbaiki: profile.cons.slice(0, 3).map((c) => c.metric).join(', ') || '-',
-  };
-}
-
-function summarizeLocations(breakdown: LocationBreakdown | null): Record<string, string | number>[] {
-  if (!breakdown) return [];
-
-  return breakdown.rows.slice(0, 8).map((row) => ({
-    lokasi: row.key,
-    avgTotal: formatScore(row.avgTotal),
-    jumlahData: row.n,
-    catatan: row.isSmallSample ? 'data sedikit' : 'data cukup',
-  }));
-}
-
-function buildContextSummary(context: ScoringChatContext): string {
-  const topTeams = [...context.teams].sort((a, b) => a.rank - b.rank).slice(0, 8);
-  const bottomTeams = [...context.teams].sort((a, b) => b.rank - a.rank).slice(0, 8);
-  const topIndividuals = [...context.individuals]
-    .sort((a, b) => b.avgTotalOverall - a.avgTotalOverall)
-    .slice(0, 10);
-  const watchlist = context.individuals
-    .filter((p) => p.status === 'watchlist')
-    .sort((a, b) => a.avgTotalOverall - b.avgTotalOverall)
-    .slice(0, 10);
-
-  return JSON.stringify(
-    {
-      sumberData: {
-        sheetName: context.sheetName,
-        jumlahBaris: context.rowCount,
-        periode: context.availablePeriods,
-        filterAktif: context.filters,
-        jumlahTimTerfilter: context.teams.length,
-        jumlahPersonilTerfilter: context.individuals.length,
-      },
-      ringkasanTim: {
-        terbaik: topTeams.map(summarizeTeam),
-        perluPerhatian: bottomTeams.map(summarizeTeam),
-      },
-      ringkasanPersonil: {
-        topPerformer: topIndividuals.map(summarizeIndividual),
-        watchlist: watchlist.map(summarizeIndividual),
-      },
-      korelasiCsmTeknisi: context.csmCorrelation
-        ? {
-            nilaiKorelasi: context.csmCorrelation.pearsonR.toFixed(3),
-            jumlahTitikData: context.csmCorrelation.n,
-            interpretasi: context.csmCorrelation.interpretation,
-          }
-        : null,
-      rankingLokasi: {
-        loc: summarizeLocations(context.locationBreakdownLoc),
-        tipeLokasi: summarizeLocations(context.locationBreakdownType),
-      },
-    },
-    null,
-    2
-  );
-}
-
-function buildSystemPrompt(context: ScoringChatContext): string {
+function buildSeniorOpsSystemPrompt(context: ScoringChatFullContext): string {
   return [
-    'Kamu adalah asisten analisis iScore untuk pengguna Indonesia.',
-    'Jawab dengan bahasa Indonesia yang sederhana, natural, dan mudah dipahami orang awam.',
-    'Gunakan hanya data scoring yang diberikan sebagai konteks. Jangan mengarang angka, nama, peringkat, atau periode yang tidak ada di konteks.',
-    'Jika data tidak cukup, jelaskan bagian yang belum tersedia dan sarankan cara membaca data yang ada.',
-    'Fokus pada insight operasional: siapa/tim mana yang kuat, mana yang perlu perhatian, penyebab yang mungkin terlihat dari metrik, dan langkah perbaikan yang praktis.',
-    'Gunakan teks biasa tanpa Markdown atau HTML. Jangan gunakan penanda teks tebal/miring, judul Markdown, backtick, atau tag HTML untuk menebalkan teks.',
-    'Jangan menyebut bahwa kamu menerima JSON kecuali pengguna memintanya.',
+    'Kamu adalah Senior Operations & Service Performance Lead untuk operasional servis lapangan (CSM, CE, SPS).',
+    'Tugasmu adalah memberikan analisis diagnostik yang TAJAM, PRAKTIS, dan MENGUNGKAPKAN AKAR MASALAH (root cause) dari data scoring.',
     '',
-    'Konteks data scoring saat ini:',
-    buildContextSummary(context),
+    '### PEDOMAN GAYA BAHASA & KOMUNIKASI (SANGAT PENTING):',
+    '1. ANTI-AI CLICHE (DILARANG MENGGUNAKAN BAHASA KAKU ROBOT):',
+    '   - DILARANG menggunakan kata pembuka klise seperti: "Berdasarkan data yang diberikan...", "Tentu, berikut analisis mendalam...", "Halo! Saya akan menganalisis...", "Berikut adalah beberapa poin...".',
+    '   - DILARANG menggunakan jargon hampa: "perlu sinergi optimal", "maksimalkan efisiensi secara holistik", "tingkatkan potensi".',
+    '   - Gunakan bahasa Indonesia lugas, profesional, dan mengalir natural seperti diskusi manajerial antar pimpinan operasional.',
+    '',
+    '2. BOTTOM-LINE FIRST (LANGSUNG KE INTI TEMUAN):',
+    '   - Buka kalimat pertama langsung dengan temuan paling krusial.',
+    '   - Contoh: "Masalah utama di Tim A1 bukan karena teknisi lambat melayani pelanggan, melainkan tertahan di administrasi MoP dan keterlambatan retur part pasca rotasi cabang."',
+    '',
+    '3. BEDAKAN KOMPETENSI SKILL VS KENDALA LINGKUNGAN/LOGISTIK:',
+    '   - Jika seorang teknisi memiliki CSAT/FirstVisit bagus tapi skor totalnya rendah, jelaskan bahwa keahlian teknisnya solid namun terbebani kepatuhan administrasi atau logistik lokal.',
+    '   - Jika performa anjlok setelah mutasi (mutation drift), soroti faktor adaptasi wilayah baru atau supervisi lokal sebelum menyalahkan personel.',
+    '',
+    '4. REKOMENDASI OPERASIONAL KONKRET:',
+    '   - Berikan rekomendasi yang bisa langsung dieksekusi (misal: "Jadwalkan rekonsiliasi part bekas tiap Jumat pagi" atau "Dampingi pengisian MoP di 3 hari pertama bulan berjalan").',
+    '',
+    '5. GUNAKAN TOOL UNTUK MENGAMBIL DATA DETAIL:',
+    '   - Kamu dibekali tools fungsi lokal (query_top_bottom_performers, query_individual_profile, query_team_profile, query_anomalies, query_clusters, query_mutation_impacts, query_branch_comparison).',
+    '   - Gunakan tool tersebut untuk mengambil angka riil dan bukti spesifik sebelum menjawab pertanyaan pengguna.',
+    '',
+    `INFORMASI DATA DASHBOARD SAAT INI:`,
+    `- Sumber Data: ${context.sheetName} (${context.rowCount.toLocaleString()} baris)`,
+    `- Periode Tersedia: ${context.availablePeriods.join(', ')}`,
+    `- Jumlah Tim Aktif: ${context.teams.length}, Jumlah Personil: ${context.individuals.length}`,
+    `- Jumlah Anomali Statistik Terdeteksi: ${context.anomalies?.anomalies.length ?? 0}`,
+    `- Jumlah Kluster Perilaku (K-Means): ${context.clusters.length}`,
   ].join('\n');
 }
 
@@ -166,15 +74,14 @@ function extractAiText(payload: unknown): string {
     content?: string;
   };
 
-  const text = (
+  const text =
     data.choices?.[0]?.message?.content ||
     data.choices?.[0]?.text ||
     data.output_text ||
     data.response ||
     data.answer ||
     data.content ||
-    ''
-  );
+    '';
 
   return text
     .replace(/\*\*/g, '')
@@ -187,47 +94,176 @@ export function isChatConfigured(): boolean {
   return Boolean(chatEndpoint && (chatEndpoint.startsWith('/') || chatApiKey));
 }
 
-export async function askScoringAi({ question, history, context }: ChatRequest): Promise<string> {
-  if (!isChatConfigured()) {
-    throw new Error('Konfigurasi AI belum lengkap. Isi VITE_AI_CHAT_ENDPOINT dan VITE_AI_CHAT_API_KEY terlebih dahulu.');
-  }
+/**
+ * Fallback query without tool calling (static prompt mode).
+ */
+async function fallbackStandardChat(
+  question: string,
+  history: { role: 'user' | 'assistant'; content: string }[],
+  context: ScoringChatFullContext
+): Promise<string> {
+  const topTeams = [...context.teams].sort((a, b) => a.rank - b.rank).slice(0, 5);
+  const bottomTeams = [...context.teams].sort((a, b) => b.rank - a.rank).slice(0, 5);
+  const watchlist = context.individuals.filter((p) => p.status === 'watchlist').slice(0, 8);
+  const topPerfs = context.individuals.filter((p) => p.status === 'top_performer').slice(0, 8);
+  const anomalies = context.anomalies?.anomalies.slice(0, 6) ?? [];
 
-  const recentHistory = history.slice(-8);
-  const body = {
-    model: chatModel || undefined,
-    messages: [
-      { role: 'system', content: buildSystemPrompt(context) },
-      ...recentHistory,
-      { role: 'user', content: question },
-    ],
-    temperature: 0.2,
-  };
+  const summary = JSON.stringify({
+    timTerbaik: topTeams.map((t) => ({ mpg: t.mpg, skor: formatScore(t.avgTotalOverall), tren: t.trend })),
+    timPerluPerhatian: bottomTeams.map((t) => ({ mpg: t.mpg, skor: formatScore(t.avgTotalOverall), tren: t.trend })),
+    watchlistPersonil: watchlist.map((w) => ({ npk: w.npk, nama: w.nama, skor: formatScore(w.avgTotalOverall), tren: w.trend })),
+    topPerformers: topPerfs.map((tp) => ({ npk: tp.npk, nama: tp.nama, skor: formatScore(tp.avgTotalOverall) })),
+    anomaliKritis: anomalies.map((a) => ({ nama: a.nama, judul: a.title, deskripsi: a.description })),
+  }, null, 2);
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
+  const messages = [
+    { role: 'system', content: `${buildSeniorOpsSystemPrompt(context)}\n\nDATA RINGKASAN:\n${summary}` },
+    ...history.slice(-6),
+    { role: 'user', content: question },
+  ];
 
-  if (chatApiKey) {
-    headers.Authorization = `Bearer ${chatApiKey}`;
-  }
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (chatApiKey) headers.Authorization = `Bearer ${chatApiKey}`;
 
   const response = await fetch(chatEndpoint, {
     method: 'POST',
     headers,
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      model: chatModel || undefined,
+      messages,
+      temperature: 0.3,
+    }),
   });
 
   if (!response.ok) {
-    const errorText = await response.text().catch(() => '');
-    throw new Error(errorText || `AI mengembalikan status ${response.status}.`);
+    const err = await response.text().catch(() => '');
+    throw new Error(err || `AI mengembalikan status ${response.status}`);
   }
 
   const payload = await response.json();
-  const text = extractAiText(payload).trim();
+  return extractAiText(payload);
+}
 
-  if (!text) {
-    throw new Error('Respons AI kosong atau format respons tidak dikenali.');
+/**
+ * Main AI Query Engine with Multi-Turn Tool Calling.
+ */
+export async function askScoringAi({
+  question,
+  history,
+  context,
+  onExecutingTool,
+}: ChatRequest): Promise<string> {
+  if (!isChatConfigured()) {
+    throw new Error(
+      'Konfigurasi AI belum lengkap. Isi VITE_AI_CHAT_ENDPOINT dan VITE_AI_CHAT_API_KEY di file .env terlebih dahulu.'
+    );
   }
 
-  return text;
+  const systemMessage = { role: 'system', content: buildSeniorOpsSystemPrompt(context) };
+  const recentHistory = history.slice(-6).map((h) => ({ role: h.role, content: h.content }));
+
+  const messages: unknown[] = [
+    systemMessage,
+    ...recentHistory,
+    { role: 'user', content: question },
+  ];
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (chatApiKey) {
+    headers.Authorization = `Bearer ${chatApiKey}`;
+  }
+
+  let loopCount = 0;
+  const maxLoops = 3;
+
+  while (loopCount < maxLoops) {
+    loopCount++;
+
+    let response: Response;
+    try {
+      response = await fetch(chatEndpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model: chatModel || undefined,
+          messages,
+          tools: SCORING_CHAT_TOOLS,
+          tool_choice: 'auto',
+          temperature: 0.2,
+        }),
+      });
+    } catch {
+      // Network failure on tools endpoint -> attempt fallback
+      return fallbackStandardChat(question, history, context);
+    }
+
+    if (!response.ok) {
+      // If endpoint doesn't support tools (HTTP 400), seamlessly fallback to standard mode
+      if (response.status === 400 || response.status === 422) {
+        return fallbackStandardChat(question, history, context);
+      }
+      const errorText = await response.text().catch(() => '');
+      throw new Error(errorText || `AI mengembalikan status ${response.status}.`);
+    }
+
+    const payload = await response.json();
+    const choice = payload?.choices?.[0];
+    const message = choice?.message;
+
+    if (!message) {
+      const text = extractAiText(payload);
+      if (text) return text;
+      throw new Error('Respons AI kosong atau format tidak dikenali.');
+    }
+
+    // Check if LLM requested tool calls
+    if (message.tool_calls && Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+      // Append assistant's tool_call request message
+      messages.push(message);
+
+      for (const toolCall of message.tool_calls) {
+        const toolName = toolCall.function?.name;
+        let args: Record<string, unknown> = {};
+        try {
+          args = JSON.parse(toolCall.function?.arguments || '{}');
+        } catch {
+          args = {};
+        }
+
+        if (onExecutingTool) {
+          onExecutingTool(toolName);
+        }
+
+        const toolResult = executeScoringTool(toolName, args, context);
+
+        // Append tool result message
+        messages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          name: toolName,
+          content: toolResult,
+        });
+      }
+
+      // Continue the loop to get final answer from LLM with tool data
+      continue;
+    }
+
+    // If no tool call, this is the final answer
+    const finalContent = message.content || extractAiText(payload);
+    if (!finalContent) {
+      return fallbackStandardChat(question, history, context);
+    }
+
+    return finalContent
+      .replace(/\*\*/g, '')
+      .replace(/__([^_]+)__/g, '$1')
+      .replace(/<\/?strong>/gi, '')
+      .trim();
+  }
+
+  // If reached max loops, do a final standard fallback
+  return fallbackStandardChat(question, history, context);
 }

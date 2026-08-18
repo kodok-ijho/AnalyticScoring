@@ -13,12 +13,17 @@ import type {
   DataSourceMetadata,
   ContextAnalysis,
   AnalysisScope,
+  PersonnelCluster,
+  AnomalyAnalysisResult,
+  AnomalyCategory,
 } from '../types';
 import { parseWorkbook } from '../lib/parseWorkbook';
 import { validateSchema } from '../lib/validateSchema';
 import { normalizeRows, getUniquePeriods } from '../lib/normalizeRows';
 import { buildTeamProfiles } from '../lib/aggregateTeams';
 import { buildIndividualProfiles, computePeerBaselines } from '../lib/aggregateIndividuals';
+import { clusterPersonnel } from '../lib/clustering';
+import { detectAnomalies } from '../lib/anomalyDetection';
 import {
   computeCsmSubordinateCorrelation,
   computeLocationBreakdown,
@@ -54,6 +59,10 @@ interface DashboardState {
   activeTab: 'team' | 'individual';
   individualProfiles: IndividualProfile[];
   filteredIndividualProfiles: IndividualProfile[];
+  clusters: PersonnelCluster[];
+  selectedClusterId: string | null;
+  anomalyAnalysis: AnomalyAnalysisResult | null;
+  selectedAnomalyCategory: AnomalyCategory | null;
   peerBaselines: PeerBaseline[];
   csmCorrelation: CsmSubordinateCorrelation | null;
   locationBreakdownLoc: LocationBreakdown | null;
@@ -77,9 +86,11 @@ interface DashboardState {
   setAnalysisMonth: (period: string) => void;
   setAnalysisFiscalYear: (startYear: number) => void;
 
-  // Phase 2 actions
+  // Phase 2 & Enhancement actions
   setActiveTab: (tab: 'team' | 'individual') => void;
   setSelectedIndividual: (npk: number | null) => void;
+  setSelectedClusterId: (id: string | null) => void;
+  setSelectedAnomalyCategory: (category: AnomalyCategory | null) => void;
 }
 
 const initialFilters: FilterState = {
@@ -152,10 +163,26 @@ function deriveFilteredViews(
   locationJob: LocationBreakdown['jabatan'] = null,
 ) {
   const teamRows = rowsForTeamAnalysis(rows, scope);
+  const indProfiles = buildIndividualProfiles(rows, peerBaselines);
+  const clustered = clusterPersonnel(indProfiles);
+  const anomalyAnalysis = detectAnomalies(clustered.profiles, rows);
+
+  const anomalyCountsByNpk = new Map<number, number>();
+  for (const a of anomalyAnalysis.anomalies) {
+    anomalyCountsByNpk.set(a.npk, (anomalyCountsByNpk.get(a.npk) ?? 0) + 1);
+  }
+
+  const finalIndividualProfiles = clustered.profiles.map((p) => ({
+    ...p,
+    anomalyCount: anomalyCountsByNpk.get(p.npk) ?? 0,
+  }));
+
   return {
     filteredRows: teamRows,
     filteredProfiles: buildTeamProfiles(teamRows),
-    filteredIndividualProfiles: buildIndividualProfiles(rows, peerBaselines),
+    filteredIndividualProfiles: finalIndividualProfiles,
+    clusters: clustered.clusters,
+    anomalyAnalysis,
     csmCorrelation: computeCsmSubordinateCorrelation(teamRows),
     locationBreakdownLoc: computeLocationBreakdown(teamRows, 'Loc', locationJob),
     locationBreakdownType: computeLocationBreakdown(teamRows, 'Lokasi', locationJob),
@@ -186,6 +213,10 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   activeTab: 'team',
   individualProfiles: [],
   filteredIndividualProfiles: [],
+  clusters: [],
+  selectedClusterId: null,
+  anomalyAnalysis: null,
+  selectedAnomalyCategory: null,
   peerBaselines: [],
   csmCorrelation: null,
   locationBreakdownLoc: null,
@@ -246,6 +277,10 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         peerBaselines,
         individualProfiles,
         filteredIndividualProfiles: views.filteredIndividualProfiles,
+        clusters: views.clusters,
+        selectedClusterId: null,
+        anomalyAnalysis: views.anomalyAnalysis,
+        selectedAnomalyCategory: null,
         csmCorrelation: views.csmCorrelation,
         locationBreakdownLoc: views.locationBreakdownLoc,
         locationBreakdownType: views.locationBreakdownType,
@@ -253,6 +288,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         selectedIndividual: null,
       });
     } catch (err) {
+
       set({
         uploadStatus: 'error',
         validation: {
@@ -383,10 +419,14 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       selectedMonth: null,
       selectedFiscalYearStart: null,
 
-      // Phase 2 state reset
+      // Phase 2 & Enhancement state reset
       activeTab: 'team',
       individualProfiles: [],
       filteredIndividualProfiles: [],
+      clusters: [],
+      selectedClusterId: null,
+      anomalyAnalysis: null,
+      selectedAnomalyCategory: null,
       peerBaselines: [],
       csmCorrelation: null,
       locationBreakdownLoc: null,
@@ -422,4 +462,13 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   setSelectedIndividual: (npk: number | null) => {
     set({ selectedIndividual: npk });
   },
+
+  setSelectedClusterId: (id: string | null) => {
+    set({ selectedClusterId: id });
+  },
+
+  setSelectedAnomalyCategory: (category: AnomalyCategory | null) => {
+    set({ selectedAnomalyCategory: category });
+  },
 }));
+

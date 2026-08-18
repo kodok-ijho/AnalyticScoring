@@ -148,6 +148,9 @@ export interface IndividualProfile {
   pros: { metric: string; value: number; deltaFromMean: number }[];
   cons: { metric: string; value: number; deltaFromMean: number }[];
   status: 'watchlist' | 'top_performer' | 'normal';
+  clusterId?: string;
+  clusterLabel?: string;
+  anomalyCount?: number;
 }
 
 export interface PeerBaseline {
@@ -206,3 +209,98 @@ export interface ContextAnalysis {
 }
 
 export type IndividualSortField = 'rankInPeerGroup' | 'npk' | 'nama' | 'jabatanUtama' | 'avgTotalOverall' | 'deltaPct' | 'volatility' | 'vsTeamAvg' | 'vsPeerAvg';
+
+// ==================== ENHANCEMENT 1: CLUSTERING TYPES ====================
+export type ArchetypeCategory =
+  | 'solid_anchor'       // Skor tinggi, volatilitas rendah, tren stabil/naik
+  | 'rising_potential'   // Tren akselerasi positif kuat, skor berkembang
+  | 'volatile_performer' // Skor fluktuatif tinggi, rawan tidak stabil
+  | 'needs_coaching'     // Skor rendah konsisten, tren stagnan/turun
+  | 'metric_specialist'; // Skor rata-rata tapi sangat dominan di metrik teknis/CSAT tertentu
+
+export interface ClusterArchetype {
+  id: string;
+  category: ArchetypeCategory;
+  name: string;
+  badgeColor: string;
+  description: string;
+  avgScore: number;
+  avgVolatility: number;
+  avgTrendDeltaPct: number;
+  strengths: string[];
+}
+
+export interface PersonnelCluster {
+  id: string;
+  archetype: ClusterArchetype;
+  memberNpks: number[];
+  size: number;
+  percentage: number;
+}
+
+// ==================== ENHANCEMENT 2: ANOMALY DETECTION TYPES ====================
+export type AnomalySeverity = 'critical' | 'warning' | 'info';
+export type AnomalyCategory =
+  | 'mutation_drift'      // Skor anjlok atau melonjak drastis pasca mutasi cabang/tim
+  | 'temporal_spike'      // Lonjakan atau penurunan ekstrim di satu bulan tertentu (> 2.5σ)
+  | 'metric_polarization' // Skor total tinggi tapi 1 metrik kritis jeblok, atau sebaliknya
+  | 'cohort_outlier';     // Deviasi signifikan (> 2.0σ) dibanding rekan cabang/tim setempat
+
+export interface AnomalyEvidence {
+  baselineValue: number;
+  observedValue: number;
+  delta: number;
+  unit: string;
+  details: string;
+}
+
+export interface AnomalyRecord {
+  id: string;
+  npk: number;
+  nama: string;
+  jabatan: Jabatan;
+  mpg: string;
+  loc: string;
+  category: AnomalyCategory;
+  severity: AnomalySeverity;
+  title: string;
+  description: string;
+  evidence: AnomalyEvidence;
+  periodLabel?: string;
+}
+
+export interface AnomalyAnalysisResult {
+  anomalies: AnomalyRecord[];
+  summaryByCategory: Record<AnomalyCategory, number>;
+  summaryBySeverity: Record<AnomalySeverity, number>;
+}
+
+// ==================== ENHANCEMENT 3: CHAT TOOL CALLING TYPES ====================
+export interface ChatToolParameterProperty {
+  type: string;
+  description: string;
+  enum?: string[];
+}
+
+export interface ChatToolDefinition {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: {
+      type: 'object';
+      properties: Record<string, ChatToolParameterProperty>;
+      required?: string[];
+    };
+  };
+}
+
+export interface ChatToolCall {
+  id: string;
+  type: 'function';
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
