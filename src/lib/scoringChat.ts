@@ -18,9 +18,20 @@ export interface ChatRequest {
 
 const DEFAULT_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 
-const chatEndpoint = import.meta.env.VITE_AI_CHAT_ENDPOINT || DEFAULT_ENDPOINT;
+function normalizeEndpoint(url: string): string {
+  const trimmed = url.trim().replace(/\/+$/, '');
+  if (!trimmed) return DEFAULT_ENDPOINT;
+  if (trimmed.endsWith('/chat/completions') || trimmed.endsWith('/completions')) {
+    return trimmed;
+  }
+  return `${trimmed}/chat/completions`;
+}
+
+const rawEndpoint = import.meta.env.VITE_AI_CHAT_ENDPOINT || DEFAULT_ENDPOINT;
+const chatEndpoint = normalizeEndpoint(rawEndpoint);
 const chatApiKey = import.meta.env.VITE_AI_CHAT_API_KEY || '';
 const chatModel = import.meta.env.VITE_AI_CHAT_MODEL || '';
+
 
 function formatScore(value: number | undefined): string {
   return value === undefined ? '-' : value.toFixed(2);
