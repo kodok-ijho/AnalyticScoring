@@ -107,4 +107,48 @@ describe('aggregateIndividuals', () => {
     const profiles = buildIndividualProfiles(rows, computePeerBaselines(rows));
     expect(profiles.some((profile) => profile.npk === 9999)).toBe(false);
   });
+
+  it('should exclude personnel who are not present in the latest period', () => {
+    const rowsWithResigned: NormalizedRow[] = [
+      ...mockRows, // NPK 1234 exists in Okt, Nov, Des (latest)
+      // NPK 5555 only exists in Okt & Nov (resigned before Des)
+      {
+        periodeSerial: 45931,
+        periodeDate: new Date(2025, 9, 1),
+        periodeLabel: 'Okt 2025',
+        mpg: 'A1',
+        wctr: 'W1',
+        nama: 'Budi Resign',
+        npk: 5555,
+        lokasi: 'HO',
+        loc: 'MDN',
+        jabatan: 'CE',
+        total: 4.0,
+        metrics: {},
+      },
+      {
+        periodeSerial: 45962,
+        periodeDate: new Date(2025, 10, 1),
+        periodeLabel: 'Nov 2025',
+        mpg: 'A1',
+        wctr: 'W1',
+        nama: 'Budi Resign',
+        npk: 5555,
+        lokasi: 'HO',
+        loc: 'MDN',
+        jabatan: 'CE',
+        total: 4.1,
+        metrics: {},
+      },
+    ];
+
+    const baselines = computePeerBaselines(rowsWithResigned);
+    const profiles = buildIndividualProfiles(rowsWithResigned, baselines);
+
+    // Only NPK 1234 should be included because only NPK 1234 is in Des 2025 (the latest period)
+    expect(profiles).toHaveLength(1);
+    expect(profiles[0].npk).toBe(1234);
+    expect(profiles.some((p) => p.npk === 5555)).toBe(false);
+  });
 });
+

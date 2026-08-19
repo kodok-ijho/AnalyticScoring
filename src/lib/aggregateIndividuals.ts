@@ -139,6 +139,15 @@ export function buildIndividualProfiles(
 ): IndividualProfile[] {
   if (rows.length === 0) return [];
 
+  // Find the latest period timestamp present in the given dataset
+  let latestTimestamp = -Infinity;
+  for (const r of rows) {
+    const t = r.periodeDate.getTime();
+    if (t > latestTimestamp) {
+      latestTimestamp = t;
+    }
+  }
+
   // Group rows by NPK
   const rowsByNpk = new Map<number, NormalizedRow[]>();
   const nameByNpk = new Map<number, string>();
@@ -178,10 +187,19 @@ export function buildIndividualProfiles(
   const profiles: IndividualProfile[] = [];
 
   for (const [npk, npkRows] of rowsByNpk.entries()) {
+    // Exclude personnel who are not present in the latest active period (e.g. resigned/inactive)
+    const isPresentInLatestPeriod = npkRows.some(
+      (r) => r.periodeDate.getTime() === latestTimestamp
+    );
+    if (!isPresentInLatestPeriod) {
+      continue;
+    }
+
     const nama = nameByNpk.get(npk) ?? 'Karyawan Tanpa Nama';
 
     // Sort chronologically
     npkRows.sort((a, b) => a.periodeDate.getTime() - b.periodeDate.getTime());
+
 
     // 1. History & Mutations
     const history = npkRows.map((r) => ({
