@@ -131,12 +131,13 @@ export function ContextEffectPanel() {
 
           {/* Anomaly Cards Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-            {filteredAnomalies.slice(0, 9).map((a) => (
+            {filteredAnomalies.map((a) => (
               <div
                 key={a.id}
                 onClick={() => setSelectedIndividual(a.npk)}
                 className="p-4 rounded-xl border border-slate-700/60 bg-slate-900/70 hover:bg-slate-800/80 hover:border-slate-600 transition-all cursor-pointer flex flex-col justify-between space-y-3"
               >
+
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-1.5">
                     <span

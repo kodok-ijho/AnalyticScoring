@@ -159,60 +159,94 @@ export function detectAnomalies(
   }
 
   // -------------------------------------------------------------
-  // RULE 3: Metric Polarization / Bottleneck Deficit
+  // RULE 3: Metric Polarization / Bottleneck Deficit (Grouped per Person)
   // -------------------------------------------------------------
   for (const p of profiles) {
     const totalScore = p.avgTotalOverall;
+    const deficits: { name: string; val: number; diff: number }[] = [];
+    const masteries: { name: string; val: number; diff: number }[] = [];
+
     for (const [metric, metricVal] of Object.entries(p.metricAverages)) {
-      const cleanName = metric.replace(/^(5Scale|SubTotal)_/, '').replace(/_(CSM|CE|SPS)$/, '');
+      // Only evaluate standardized 5Scale metrics (1-5 scale)
+      if (!metric.startsWith('5Scale_')) continue;
+      // Skip TSM for CE / SPS
+      if ((p.jabatanUtama === 'CE' || p.jabatanUtama === 'SPS') && metric.includes('TSM')) continue;
+
+      const cleanName = metric.replace(/^5Scale_/, '').replace(/_(CSM|CE|SPS)$/, '');
 
       // Case A: High Total Score but Severe Single-Metric Deficit
-      if (totalScore >= 3.75 && metricVal <= 2.20 && (totalScore - metricVal) >= 1.50) {
-        anomalies.push({
-          id: `pol-neg-${p.npk}-${cleanName}`,
-          npk: p.npk,
-          nama: p.nama,
-          jabatan: p.jabatanUtama,
-          mpg: p.history[p.history.length - 1]?.mpg ?? '-',
-          loc: p.history[p.history.length - 1]?.loc ?? '-',
-          category: 'metric_polarization',
-          severity: 'warning',
-          title: `Defisit Metrik ${cleanName}`,
-          description: `${p.nama} memiliki skor komposit sangat baik (${totalScore.toFixed(2)}), namun memiliki kelemahan kritis pada metrik ${cleanName} (${metricVal.toFixed(2)}).`,
-          evidence: {
-            baselineValue: Number(totalScore.toFixed(2)),
-            observedValue: Number(metricVal.toFixed(2)),
-            delta: Number((metricVal - totalScore).toFixed(2)),
-            unit: 'skor (1-5)',
-            details: `Selisih defisit ${Math.abs(metricVal - totalScore).toFixed(2)} poin dibanding skor agregat.`,
-          },
-        });
+      if (totalScore >= 3.50 && metricVal <= 2.20 && (totalScore - metricVal) >= 1.30) {
+        deficits.push({ name: cleanName, val: metricVal, diff: totalScore - metricVal });
       }
-
       // Case B: Low Total Score but Outstanding Specific Technical Mastery
-      if (totalScore <= 2.85 && metricVal >= 4.40) {
-        anomalies.push({
-          id: `pol-pos-${p.npk}-${cleanName}`,
-          npk: p.npk,
-          nama: p.nama,
-          jabatan: p.jabatanUtama,
-          mpg: p.history[p.history.length - 1]?.mpg ?? '-',
-          loc: p.history[p.history.length - 1]?.loc ?? '-',
-          category: 'metric_polarization',
-          severity: 'info',
-          title: `Penguasaan Unggul Metrik ${cleanName}`,
-          description: `${p.nama} menunjukkan kapabilitas ${cleanName} sangat tinggi (${metricVal.toFixed(2)}) meskipun skor total tertahan di ${totalScore.toFixed(2)}.`,
-          evidence: {
-            baselineValue: Number(totalScore.toFixed(2)),
-            observedValue: Number(metricVal.toFixed(2)),
-            delta: Number((metricVal - totalScore).toFixed(2)),
-            unit: 'skor (1-5)',
-            details: `Keahlian menonjol pada ${cleanName} (+${(metricVal - totalScore).toFixed(2)} poin di atas skor total).`,
-          },
-        });
+      else if (totalScore <= 2.85 && metricVal >= 4.20 && (metricVal - totalScore) >= 1.30) {
+        masteries.push({ name: cleanName, val: metricVal, diff: metricVal - totalScore });
       }
     }
+
+    // If person has deficit metric(s), create 1 consolidated anomaly card for the individual
+    if (deficits.length > 0) {
+      deficits.sort((a, b) => b.diff - a.diff); // Largest deficit first
+      const primary = deficits[0];
+      const otherDeficits = deficits.slice(1);
+      const otherSummary =
+        otherDeficits.length > 0
+          ? ` serta ${otherDeficits.map((d) => `${d.name} (${d.val.toFixed(2)})`).join(', ')}`
+          : '';
+
+      anomalies.push({
+        id: `pol-neg-${p.npk}`,
+        npk: p.npk,
+        nama: p.nama,
+        jabatan: p.jabatanUtama,
+        mpg: p.history[p.history.length - 1]?.mpg ?? '-',
+        loc: p.history[p.history.length - 1]?.loc ?? '-',
+        category: 'metric_polarization',
+        severity: primary.diff >= 2.0 ? 'critical' : 'warning',
+        title: `Defisit Metrik ${primary.name}${otherDeficits.length > 0 ? ` (+${otherDeficits.length} lainnya)` : ''}`,
+        description: `${p.nama} memiliki skor komposit sangat baik (${totalScore.toFixed(2)}), namun memiliki kelemahan kritis pada ${primary.name} (${primary.val.toFixed(2)})${otherSummary}.`,
+        evidence: {
+          baselineValue: Number(totalScore.toFixed(2)),
+          observedValue: Number(primary.val.toFixed(2)),
+          delta: Number((primary.val - totalScore).toFixed(2)),
+          unit: 'skor (1-5)',
+          details: `Selisih defisit ${primary.diff.toFixed(2)} poin dibanding skor agregat${otherDeficits.length > 0 ? ` (total ${deficits.length} metrik defisit)` : ''}.`,
+        },
+      });
+    }
+
+    // If person has mastery metric(s), create 1 consolidated anomaly card for the individual
+    if (masteries.length > 0) {
+      masteries.sort((a, b) => b.diff - a.diff); // Highest mastery first
+      const primary = masteries[0];
+      const otherMasteries = masteries.slice(1);
+      const otherSummary =
+        otherMasteries.length > 0
+          ? ` serta ${otherMasteries.map((m) => `${m.name} (${m.val.toFixed(2)})`).join(', ')}`
+          : '';
+
+      anomalies.push({
+        id: `pol-pos-${p.npk}`,
+        npk: p.npk,
+        nama: p.nama,
+        jabatan: p.jabatanUtama,
+        mpg: p.history[p.history.length - 1]?.mpg ?? '-',
+        loc: p.history[p.history.length - 1]?.loc ?? '-',
+        category: 'metric_polarization',
+        severity: 'info',
+        title: `Penguasaan Unggul ${primary.name}${otherMasteries.length > 0 ? ` (+${otherMasteries.length} lainnya)` : ''}`,
+        description: `${p.nama} menunjukkan kapabilitas ${primary.name} sangat tinggi (${primary.val.toFixed(2)})${otherSummary} meskipun skor total tertahan di ${totalScore.toFixed(2)}.`,
+        evidence: {
+          baselineValue: Number(totalScore.toFixed(2)),
+          observedValue: Number(primary.val.toFixed(2)),
+          delta: Number((primary.val - totalScore).toFixed(2)),
+          unit: 'skor (1-5)',
+          details: `Keahlian menonjol pada ${primary.name} (+${primary.diff.toFixed(2)} poin di atas skor total).`,
+        },
+      });
+    }
   }
+
 
   // -------------------------------------------------------------
   // RULE 4: Cohort Branch Divergence (|residual| >= 2.0σ)
