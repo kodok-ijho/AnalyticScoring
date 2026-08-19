@@ -267,22 +267,34 @@ function classifyArchetype(
     name = 'Potensi Berkembang (Rising Star)';
     badgeColor = 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300';
     description = 'Personil dengan akselerasi perbaikan skor signifikan sepanjang periode evaluasi.';
+  } else if (avgScore < 2.0 || avgTrendDeltaPct <= -10.0) {
+    category = 'needs_coaching';
+    name = 'Zona Merah (Intervensi Kritis)';
+    badgeColor = 'bg-rose-500/10 border-rose-500/30 text-rose-400';
+    description = 'Personil dengan penurunan performa tajam atau capaian jauh di bawah target minimum.';
   } else if (avgVolatility >= 0.28) {
     category = 'volatile_performer';
     name = 'Fluktuatif (Volatile Performer)';
     badgeColor = 'bg-amber-500/10 border-amber-500/30 text-amber-400';
     description = 'Personil dengan capaian skor cukup baik namun rentan mengalami naik-turun yang drastis.';
-  } else if (strengths.length > 0 && avgScore >= 3.1) {
+  } else if (strengths.length > 0 && avgScore >= 3.0) {
     category = 'metric_specialist';
-    name = 'Spesialis Metrik Tertentu';
+    const cleanStrengths = strengths.slice(0, 2).map((s) => s.replace(/^5Scale_/, '').replace(/_(CSM|CE|SPS)$/, ''));
+    name = cleanStrengths.length > 0 ? `Spesialis ${cleanStrengths.join(' & ')}` : 'Spesialis Metrik Tertentu';
     badgeColor = 'bg-violet-500/10 border-violet-500/30 text-violet-400';
     description = 'Personil dengan keunggulan menonjol di metrik spesifik meskipun skor agregat rata-rata.';
+  } else if (avgTrendDeltaPct > 0) {
+    category = 'needs_coaching';
+    name = 'Potensi Bangkit (Perlu Dorongan)';
+    badgeColor = 'bg-amber-500/10 border-amber-500/30 text-amber-300';
+    description = 'Personil di bawah target rata-rata namun menunjukkan tren pemulihan positif.';
   } else {
     category = 'needs_coaching';
     name = 'Fokus Pendampingan (Needs Coaching)';
     badgeColor = 'bg-rose-500/10 border-rose-500/30 text-rose-400';
     description = 'Personil yang membutuhkan intervensi operasional langsung untuk mendongkrak capaian metrik.';
   }
+
 
   return {
     id: clusterId,

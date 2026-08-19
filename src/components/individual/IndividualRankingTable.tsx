@@ -32,18 +32,22 @@ export function IndividualRankingTable() {
   const selectedClusterId = useDashboardStore((s) => s.selectedClusterId);
   const setSelectedIndividual = useDashboardStore((s) => s.setSelectedIndividual);
 
-  const [activeRole, setActiveRole] = useState<Exclude<Jabatan, 'UNKNOWN'>>('CE');
+  const [activeRole, setActiveRole] = useState<Exclude<Jabatan, 'UNKNOWN'> | 'ALL'>('CE');
   const [sortField, setSortField] = useState<IndividualSortField>('rankInPeerGroup');
   const [sortDir, setSortDir] = useState<SortDirection>('asc');
 
   // Filter profiles by current active role and selected cluster
   const roleFilteredProfiles = useMemo(() => {
-    let list = filteredIndividualProfiles.filter((p) => p.jabatanUtama === activeRole);
+    let list = filteredIndividualProfiles;
+    if (activeRole !== 'ALL') {
+      list = list.filter((p) => p.jabatanUtama === activeRole);
+    }
     if (selectedClusterId) {
       list = list.filter((p) => p.clusterId === selectedClusterId);
     }
     return list;
   }, [filteredIndividualProfiles, activeRole, selectedClusterId]);
+
 
   // Sort profiles
   const sortedProfiles = useMemo(() => {
@@ -112,24 +116,30 @@ export function IndividualRankingTable() {
         
         {/* Role filters */}
         <div className="flex bg-slate-800/80 p-1 rounded-lg border border-slate-700/50">
-          {(['CE', 'SPS', 'CSM'] as const).map((role) => (
+          {([
+            { id: 'CE', label: 'CE' },
+            { id: 'SPS', label: 'SPS' },
+            { id: 'CSM', label: 'CSM' },
+            { id: 'ALL', label: 'Semua' },
+          ] as const).map((tab) => (
             <button
-              key={role}
+              key={tab.id}
               onClick={() => {
-                setActiveRole(role);
+                setActiveRole(tab.id);
                 setSortField('rankInPeerGroup');
                 setSortDir('asc');
               }}
-              className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${
-                activeRole === role
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                activeRole === tab.id
                   ? 'bg-violet-600 text-white shadow-md'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              {role}
+              {tab.label}
             </button>
           ))}
         </div>
+
       </div>
 
       <div className="overflow-x-auto">
