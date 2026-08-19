@@ -60,6 +60,10 @@ export function IndividualRankingTable() {
         case 'rankInPeerGroup': valA = a.rankInPeerGroup; valB = b.rankInPeerGroup; break;
         case 'npk': valA = a.npk; valB = b.npk; break;
         case 'nama': valA = a.nama; valB = b.nama; break;
+        case 'wctr':
+          valA = a.currentWctr || a.history[a.history.length - 1]?.wctr || '';
+          valB = b.currentWctr || b.history[b.history.length - 1]?.wctr || '';
+          break;
         case 'jabatanUtama': valA = a.jabatanUtama; valB = b.jabatanUtama; break;
         case 'avgTotalOverall': valA = a.avgTotalOverall; valB = b.avgTotalOverall; break;
         case 'deltaPct': valA = a.trend.deltaPct; valB = b.trend.deltaPct; break;
@@ -67,6 +71,7 @@ export function IndividualRankingTable() {
         case 'vsTeamAvg': valA = a.vsTeamAvg; valB = b.vsTeamAvg; break;
         case 'vsPeerAvg': valA = a.vsPeerAvg; valB = b.vsPeerAvg; break;
       }
+
 
       if (typeof valA === 'string' && typeof valB === 'string') {
         return sortDir === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
@@ -149,6 +154,7 @@ export function IndividualRankingTable() {
               <SortHeader field="rankInPeerGroup" label="#" />
               <SortHeader field="npk" label="NPK" />
               <SortHeader field="nama" label="Nama" />
+              <SortHeader field="wctr" label="WCTR" />
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
                 Segmen
               </th>
@@ -203,6 +209,11 @@ export function IndividualRankingTable() {
                       </span>
                     ) : null}
                   </div>
+                </td>
+                <td className="px-4 py-3">
+                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-slate-800/90 border border-slate-700 text-cyan-300">
+                    {p.currentWctr || p.history[p.history.length - 1]?.wctr || '-'}
+                  </span>
                 </td>
                 <td className="px-4 py-3">
                   <span className="text-xs px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700 text-slate-300 font-medium">
@@ -260,12 +271,13 @@ export function IndividualRankingTable() {
             ))}
             {sortedProfiles.length === 0 && (
               <tr>
-                <td colSpan={12} className="text-center py-12 text-slate-500 text-sm">
+                <td colSpan={13} className="text-center py-12 text-slate-500 text-sm">
                   Tidak ada data untuk grup jabatan/segmen ini.
                 </td>
               </tr>
             )}
           </tbody>
+
         </table>
       </div>
     </div>

@@ -148,6 +148,9 @@ export interface IndividualProfile {
   pros: { metric: string; value: number; deltaFromMean: number }[];
   cons: { metric: string; value: number; deltaFromMean: number }[];
   status: 'watchlist' | 'top_performer' | 'normal';
+  currentWctr?: string;
+  currentMpg?: string;
+  currentLoc?: string;
   clusterId?: string;
   clusterLabel?: string;
   anomalyCount?: number;
@@ -208,7 +211,17 @@ export interface ContextAnalysis {
   individualEffects: Record<string, IndividualContextEffect>;
 }
 
-export type IndividualSortField = 'rankInPeerGroup' | 'npk' | 'nama' | 'jabatanUtama' | 'avgTotalOverall' | 'deltaPct' | 'volatility' | 'vsTeamAvg' | 'vsPeerAvg';
+export type IndividualSortField =
+  | 'rankInPeerGroup'
+  | 'npk'
+  | 'nama'
+  | 'wctr'
+  | 'jabatanUtama'
+  | 'avgTotalOverall'
+  | 'deltaPct'
+  | 'volatility'
+  | 'vsTeamAvg'
+  | 'vsPeerAvg';
 
 // ==================== ENHANCEMENT 1: CLUSTERING TYPES ====================
 export type ArchetypeCategory =

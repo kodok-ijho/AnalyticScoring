@@ -320,6 +320,7 @@ export function buildIndividualProfiles(
 
     // 7. Status
     const status = classifyStatus({ trend, vsPeerAvg });
+    const latestHistory = history[history.length - 1];
 
     profiles.push({
       npk,
@@ -334,11 +335,15 @@ export function buildIndividualProfiles(
       metricAverages,
       vsTeamAvg,
       vsPeerAvg,
+      currentWctr: latestHistory?.wctr ?? '-',
+      currentMpg: latestHistory?.mpg ?? '-',
+      currentLoc: latestHistory?.loc ?? '-',
       rankInPeerGroup: 0, // set later
       pros,
       cons,
       status,
     });
+
   }
 
   // 8. Assign rankInPeerGroup per peer group (CSM, CE, SPS separately)
