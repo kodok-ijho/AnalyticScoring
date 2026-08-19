@@ -15,7 +15,7 @@ const ROLE_OPTIONS: { id: RoleScope; label: string; description: string }[] = [
 export function ClusterSegmentPanel() {
   const filteredIndividualProfiles = useDashboardStore((s) => s.filteredIndividualProfiles);
   const selectedClusterId = useDashboardStore((s) => s.selectedClusterId);
-  const setSelectedClusterId = useDashboardStore((s) => s.setSelectedClusterId);
+  const setSelectedCluster = useDashboardStore((s) => s.setSelectedCluster);
 
   const [activeRoleScope, setActiveRoleScope] = useState<RoleScope>('teknisi');
 
@@ -68,7 +68,7 @@ export function ClusterSegmentPanel() {
               key={opt.id}
               onClick={() => {
                 setActiveRoleScope(opt.id);
-                setSelectedClusterId(null); // reset cluster selection on scope change
+                setSelectedCluster(null); // reset cluster selection on scope change
               }}
               title={opt.description}
               className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
@@ -92,7 +92,7 @@ export function ClusterSegmentPanel() {
 
         {selectedClusterId && (
           <button
-            onClick={() => setSelectedClusterId(null)}
+            onClick={() => setSelectedCluster(null)}
             className="text-xs px-2.5 py-0.5 rounded-md border border-slate-600 bg-slate-800 text-slate-300 hover:text-white transition-all flex items-center gap-1"
           >
             <span>✕ Reset Filter Kluster</span>
@@ -107,13 +107,24 @@ export function ClusterSegmentPanel() {
           return (
             <button
               key={c.id}
-              onClick={() => setSelectedClusterId(isSelected ? null : c.id)}
+              onClick={() => {
+                if (isSelected) {
+                  setSelectedCluster(null);
+                } else {
+                  setSelectedCluster({
+                    id: c.id,
+                    name: c.archetype.name,
+                    memberNpks: c.memberNpks,
+                  });
+                }
+              }}
               className={`text-left p-4 rounded-xl border transition-all relative overflow-hidden flex flex-col justify-between cursor-pointer ${
                 isSelected
                   ? 'bg-slate-800/95 border-cyan-400 shadow-xl shadow-cyan-500/10 ring-2 ring-cyan-400/60'
                   : 'bg-slate-900/60 border-slate-700/40 hover:border-slate-600 hover:bg-slate-800/60'
               }`}
             >
+
               <div>
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <span

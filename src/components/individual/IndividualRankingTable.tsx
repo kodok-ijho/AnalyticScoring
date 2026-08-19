@@ -30,24 +30,27 @@ export function IndividualRankingTable() {
   const filteredIndividualProfiles = useDashboardStore((s) => s.filteredIndividualProfiles);
   const contextAnalysis = useDashboardStore((s) => s.contextAnalysis);
   const selectedClusterId = useDashboardStore((s) => s.selectedClusterId);
+  const selectedClusterMemberNpks = useDashboardStore((s) => s.selectedClusterMemberNpks);
+  const selectedClusterLabel = useDashboardStore((s) => s.selectedClusterLabel);
+  const setSelectedCluster = useDashboardStore((s) => s.setSelectedCluster);
   const setSelectedIndividual = useDashboardStore((s) => s.setSelectedIndividual);
 
-  const [activeRole, setActiveRole] = useState<Exclude<Jabatan, 'UNKNOWN'> | 'ALL'>('CE');
+  const [activeRole, setActiveRole] = useState<Exclude<Jabatan, 'UNKNOWN'> | 'ALL'>('ALL');
   const [sortField, setSortField] = useState<IndividualSortField>('rankInPeerGroup');
   const [sortDir, setSortDir] = useState<SortDirection>('asc');
 
-  // Filter profiles by current active role and selected cluster
+  // Filter profiles by current active role and selected cluster member NPKs
   const roleFilteredProfiles = useMemo(() => {
     let list = filteredIndividualProfiles;
     if (activeRole !== 'ALL') {
       list = list.filter((p) => p.jabatanUtama === activeRole);
     }
-    if (selectedClusterId) {
-      list = list.filter((p) => p.clusterId === selectedClusterId);
+    if (selectedClusterMemberNpks && selectedClusterMemberNpks.length > 0) {
+      const npkSet = new Set(selectedClusterMemberNpks);
+      list = list.filter((p) => npkSet.has(p.npk));
     }
     return list;
-  }, [filteredIndividualProfiles, activeRole, selectedClusterId]);
-
+  }, [filteredIndividualProfiles, activeRole, selectedClusterMemberNpks]);
 
   // Sort profiles
   const sortedProfiles = useMemo(() => {
@@ -71,7 +74,6 @@ export function IndividualRankingTable() {
         case 'vsTeamAvg': valA = a.vsTeamAvg; valB = b.vsTeamAvg; break;
         case 'vsPeerAvg': valA = a.vsPeerAvg; valB = b.vsPeerAvg; break;
       }
-
 
       if (typeof valA === 'string' && typeof valB === 'string') {
         return sortDir === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
@@ -112,9 +114,13 @@ export function IndividualRankingTable() {
       <div className="px-6 py-4 border-b border-slate-700/50 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-bold text-white">Ranking Personil</h2>
-          {selectedClusterId && (
+          {selectedClusterLabel ? (
             <p className="text-xs text-cyan-400 mt-0.5">
-              Menampilkan filter segmen kluster aktif
+              Menampilkan {roleFilteredProfiles.length} personil pada segmen: <strong>{selectedClusterLabel}</strong>
+            </p>
+          ) : (
+            <p className="text-xs text-slate-400 mt-0.5">
+              Daftar ranking komparatif performa individu
             </p>
           )}
         </div>
@@ -122,10 +128,10 @@ export function IndividualRankingTable() {
         {/* Role filters */}
         <div className="flex bg-slate-800/80 p-1 rounded-lg border border-slate-700/50">
           {([
+            { id: 'ALL', label: 'Semua' },
             { id: 'CE', label: 'CE' },
             { id: 'SPS', label: 'SPS' },
             { id: 'CSM', label: 'CSM' },
-            { id: 'ALL', label: 'Semua' },
           ] as const).map((tab) => (
             <button
               key={tab.id}
@@ -144,8 +150,30 @@ export function IndividualRankingTable() {
             </button>
           ))}
         </div>
-
       </div>
+
+      {/* Active Cluster Banner with Reset Button */}
+      {selectedClusterLabel && (
+        <div className="px-6 py-2.5 bg-cyan-500/10 border-b border-cyan-500/20 flex flex-wrap items-center justify-between gap-2 text-xs text-cyan-300">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+            <span>Filter Segmen Aktif:</span>
+            <strong className="text-white px-2 py-0.5 rounded bg-slate-900 border border-cyan-500/40">
+              {selectedClusterLabel}
+            </strong>
+            <span className="text-slate-400">
+              ({roleFilteredProfiles.length} personil)
+            </span>
+          </div>
+          <button
+            onClick={() => setSelectedCluster(null)}
+            className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 transition-all font-medium"
+          >
+            ✕ Hapus Filter Segmen
+          </button>
+        </div>
+      )}
+
 
       <div className="overflow-x-auto">
         <table className="w-full">
@@ -217,9 +245,12 @@ export function IndividualRankingTable() {
                 </td>
                 <td className="px-4 py-3">
                   <span className="text-xs px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700 text-slate-300 font-medium">
-                    {p.clusterLabel ?? '-'}
+                    {selectedClusterMemberNpks?.includes(p.npk) && selectedClusterLabel
+                      ? selectedClusterLabel
+                      : (p.clusterLabel ?? '-')}
                   </span>
                 </td>
+
                 <td className="px-4 py-3 text-slate-300 font-mono text-sm font-semibold">
                   {p.avgTotalOverall.toFixed(2)}
                 </td>

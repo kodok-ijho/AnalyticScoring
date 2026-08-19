@@ -61,6 +61,8 @@ interface DashboardState {
   filteredIndividualProfiles: IndividualProfile[];
   clusters: PersonnelCluster[];
   selectedClusterId: string | null;
+  selectedClusterMemberNpks: number[] | null;
+  selectedClusterLabel: string | null;
   anomalyAnalysis: AnomalyAnalysisResult | null;
   selectedAnomalyCategory: AnomalyCategory | null;
   peerBaselines: PeerBaseline[];
@@ -89,9 +91,11 @@ interface DashboardState {
   // Phase 2 & Enhancement actions
   setActiveTab: (tab: 'team' | 'individual') => void;
   setSelectedIndividual: (npk: number | null) => void;
+  setSelectedCluster: (cluster: { id: string; name: string; memberNpks: number[] } | null) => void;
   setSelectedClusterId: (id: string | null) => void;
   setSelectedAnomalyCategory: (category: AnomalyCategory | null) => void;
 }
+
 
 const initialFilters: FilterState = {
   periodeRange: null,
@@ -215,6 +219,8 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   filteredIndividualProfiles: [],
   clusters: [],
   selectedClusterId: null,
+  selectedClusterMemberNpks: null,
+  selectedClusterLabel: null,
   anomalyAnalysis: null,
   selectedAnomalyCategory: null,
   peerBaselines: [],
@@ -223,6 +229,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   locationBreakdownType: null,
   contextAnalysis: null,
   selectedIndividual: null,
+
 
   loadRows: (rows: RawRow[], source: DataSourceMetadata) => {
     try {
@@ -463,6 +470,14 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     set({ selectedIndividual: npk });
   },
 
+  setSelectedCluster: (cluster: { id: string; name: string; memberNpks: number[] } | null) => {
+    set({
+      selectedClusterId: cluster?.id ?? null,
+      selectedClusterMemberNpks: cluster?.memberNpks ?? null,
+      selectedClusterLabel: cluster?.name ?? null,
+    });
+  },
+
   setSelectedClusterId: (id: string | null) => {
     set({ selectedClusterId: id });
   },
@@ -471,4 +486,5 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
     set({ selectedAnomalyCategory: category });
   },
 }));
+
 
